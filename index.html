@@ -781,10 +781,10 @@
           </div>
         </div>
         <div class="chat-options" id="chat-options">
-          <button class="chat-opt" onclick="chatReply('We\'re a growing e-commerce brand', 1)">E-commerce brand</button>
-          <button class="chat-opt" onclick="chatReply('We\'re a B2B services company', 1)">B2B services</button>
-          <button class="chat-opt" onclick="chatReply('We\'re a local/regional business', 1)">Local business</button>
-          <button class="chat-opt" onclick="chatReply('We\'re a tech startup', 1)">Tech startup</button>
+          <button class="chat-opt" onclick="handleQuickReply('We\'re a growing e-commerce brand')">E-commerce brand</button>
+          <button class="chat-opt" onclick="handleQuickReply('We\'re a B2B services company')">B2B services</button>
+          <button class="chat-opt" onclick="handleQuickReply('We\'re a local/regional business')">Local business</button>
+          <button class="chat-opt" onclick="handleQuickReply('We\'re a tech startup')">Tech startup</button>
         </div>
         <div class="chat-input-row">
           <input class="chat-input" placeholder="Or type your answer..." id="chat-input" onkeydown="if(event.key==='Enter')sendChat()">
@@ -898,86 +898,198 @@
 </footer>
 
 <script>
-const chatFlows = [
-  {
-    bot: "Great! What's your biggest marketing challenge right now?",
-    opts: [
-      ["We need more website traffic", 2],
-      ["We need more leads & conversions", 2],
-      ["Our brand feels inconsistent", 2],
-      ["We're not active on social media", 2]
-    ]
-  },
-  {
-    bot: "Understood. Based on what you've shared, our Growth package looks like a strong fit — SEO, social media, and email working together. It's $2,497/month and most clients see results within 60 days. Ready to take the next step?",
-    opts: [
-      ["Yes, let's get started!", 3],
-      ["Tell me more first", 3],
-      ["What about a smaller plan?", 3]
-    ]
-  },
-  {
-    bot: "Perfect! Click below to tell us about your business and goals. JC will personally reach out within one business day to get you set up.",
-    opts: [
-      ["Take me to the form", 4],
-      ["I have more questions", 4]
-    ]
-  },
-  {
-    bot: "Ready when you are! 🌿",
-    opts: [],
-    cta: true
-  }
-];
+  // ── Eden Live Chatbot ──
+  const PROXY = 'https://api.edenmarketingco.com';
+  const SYSTEM_PROMPT = `You are Eden, an AI marketing advisor for Eden Marketing Co. — a faith-driven, AI-powered digital marketing agency founded by JC Rodriguez, based in Jackson County, Georgia.
 
-function addMsg(text, isUser, showCta) {
-  const body = document.getElementById('chat-body');
-  const div = document.createElement('div');
-  div.className = 'msg ' + (isUser ? 'msg-user' : 'msg-bot');
-  div.innerHTML = `<div class="msg-bubble">${text}</div><div class="msg-time">Just now</div>`;
-  body.appendChild(div);
-  if (showCta) {
-    const cta = document.createElement('a');
-    cta.href = 'https://portal.edenmarketingco.com/get-started.html';
-    cta.className = 'chat-opt';
-    cta.style.cssText = 'display:inline-block;background:#1a3d2b;color:#c9a84c;border-color:#1a3d2b;text-decoration:none;margin-top:8px;';
-    cta.textContent = 'Get Started →';
-    body.appendChild(cta);
-  }
-  body.scrollTop = body.scrollHeight;
-}
+Your job is to have a warm, confident conversation with potential clients, understand their business and marketing needs, and guide them toward getting started with Eden.
 
-function chatReply(userText, nextStep) {
-  document.getElementById('chat-options').innerHTML = '';
-  addMsg(userText, true);
-  setTimeout(() => {
-    const flow = chatFlows[nextStep - 1];
-    addMsg(flow.bot, false, flow.cta);
+ABOUT EDEN:
+- AI-powered marketing agency serving mid-size businesses
+- Brand identity: "Marketing with Purpose" — faith-based, bold, purposeful
+- Founded by JC Rodriguez
+
+SERVICES & PRICING:
+- Starter Plan: $997/month — 1 core service, 8 deliverables/month, AI content, email support, monthly analytics, client portal
+- Growth Plan: $2,497/month (most popular) — 3 services bundled (Social + SEO + Email), 24 deliverables/month, Brand Studio, Content Vault, priority support, weekly analytics
+- Authority Plan: $4,997/month — All 5 services, unlimited deliverables, dedicated account manager, Active Presence AI agents, daily reporting
+- Active Presence Add-on: $1,500/month — AI social media agents running 24/7 (available on any plan)
+- Starter & Growth: clients can self-serve and pay online after speaking with JC
+- Authority: requires a strategy call with JC first
+
+HOW IT WORKS:
+1. Prospect fills out the Get Started form
+2. JC personally reaches out within 1 business day
+3. AI builds a custom strategy within 24 hours of onboarding
+4. Deliverables arrive in the client portal monthly
+
+CONVERSATION RULES:
+- Be warm, confident, and conversational — not salesy
+- Ask questions to understand their business, industry, biggest marketing challenge, and goals
+- After 2-3 exchanges, recommend the most suitable plan
+- After 3-4 exchanges, ask for their name and email so JC can follow up personally
+- Keep responses SHORT — 2-3 sentences max per message
+- Use "🌿" occasionally but don't overdo it
+- Never make up specific case studies or client names
+- When they're ready to move forward, encourage them to fill out the Get Started form at https://portal.edenmarketingco.com/get-started.html`;
+
+  let conversationHistory = [];
+  let leadCaptured = false;
+  let leadName = '';
+  let messageCount = 0;
+  let isTyping = false;
+
+  function addMsg(text, isUser) {
+    const body = document.getElementById('chat-body');
+    const typing = document.getElementById('typing-indicator');
+    if (typing) typing.remove();
+
+    const div = document.createElement('div');
+    div.className = 'msg ' + (isUser ? 'msg-user' : 'msg-bot');
+    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    div.innerHTML = `<div class="msg-bubble">${text}</div><div class="msg-time">${time}</div>`;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function showTyping() {
+    const body = document.getElementById('chat-body');
+    const div = document.createElement('div');
+    div.id = 'typing-indicator';
+    div.className = 'msg msg-bot';
+    div.innerHTML = `<div class="msg-bubble" style="display:flex;gap:4px;align-items:center;padding:10px 14px;">
+      <span style="width:6px;height:6px;background:#2d6a4f;border-radius:50%;animation:bounce 1s infinite 0s"></span>
+      <span style="width:6px;height:6px;background:#2d6a4f;border-radius:50%;animation:bounce 1s infinite 0.2s"></span>
+      <span style="width:6px;height:6px;background:#2d6a4f;border-radius:50%;animation:bounce 1s infinite 0.4s"></span>
+    </div>`;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function showLeadCapture() {
     const opts = document.getElementById('chat-options');
-    if (flow.opts) {
-      flow.opts.forEach(([label, step]) => {
-        const btn = document.createElement('button');
-        btn.className = 'chat-opt';
-        btn.textContent = label;
-        btn.onclick = () => chatReply(label, step);
-        opts.appendChild(btn);
-      });
+    opts.innerHTML = `
+      <div style="width:100%;display:flex;flex-direction:column;gap:8px;padding:4px 0;">
+        <input id="lead-name" class="chat-input" style="border:1px solid #dde8e0;border-radius:8px;padding:8px 12px;width:100%;font-size:13px;" placeholder="Your first name">
+        <input id="lead-email" class="chat-input" style="border:1px solid #dde8e0;border-radius:8px;padding:8px 12px;width:100%;font-size:13px;" placeholder="Your email address">
+        <button onclick="submitLead()" style="background:#1a3d2b;color:#c9a84c;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Send to JC →</button>
+      </div>`;
+  }
+
+  function showGetStartedCTA() {
+    const opts = document.getElementById('chat-options');
+    opts.innerHTML = `<a href="https://portal.edenmarketingco.com/get-started.html" style="display:block;width:100%;background:#1a3d2b;color:#c9a84c;text-align:center;padding:10px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;font-family:'DM Sans',sans-serif;">Complete your application →</a>`;
+  }
+
+  async function submitLead() {
+    const name = document.getElementById('lead-name').value.trim();
+    const email = document.getElementById('lead-email').value.trim();
+    if (!name || !email || !email.includes('@')) {
+      alert('Please enter your name and a valid email.');
+      return;
     }
-  }, 600);
-}
 
-function sendChat() {
-  const input = document.getElementById('chat-input');
-  const val = input.value.trim();
-  if (!val) return;
-  input.value = '';
-  chatReply(val, 1);
-}
+    leadName = name;
+    leadCaptured = true;
+    document.getElementById('chat-options').innerHTML = '';
 
-const obs = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-}, { threshold: 0.1 });
-document.querySelectorAll('.fade-up').forEach(el => obs.observe(el));
+    // Send notification email
+    try {
+      await fetch(`${PROXY}/submit-lead`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: name,
+          lastName: '',
+          email,
+          bizName: 'Via chatbot',
+          industry: 'Unknown',
+          challenge: conversationHistory.filter(m => m.role === 'user').map(m => m.content).join(' | '),
+          success: 'Engaged via website chatbot',
+          source: 'Website Chatbot',
+          notes: '',
+          plan: 'unknown'
+        })
+      });
+    } catch(e) { console.error(e); }
+
+    addMsg(`Got it, ${name}! 🌿 JC will reach out to you at ${email} within one business day. In the meantime, you can fill out our quick form to share more about your goals — it helps JC prepare for your conversation.`, false);
+    setTimeout(showGetStartedCTA, 500);
+  }
+
+  async function sendMessage(userText) {
+    if (isTyping) return;
+    isTyping = true;
+    messageCount++;
+
+    document.getElementById('chat-options').innerHTML = '';
+    addMsg(userText, true);
+    showTyping();
+
+    conversationHistory.push({ role: 'user', content: userText });
+
+    // After 3 messages, inject lead capture instruction
+    let systemPrompt = SYSTEM_PROMPT;
+    if (messageCount >= 3 && !leadCaptured) {
+      systemPrompt += '\n\nIMPORTANT: You have now had enough conversation to understand this prospect. In your NEXT response, after giving a helpful answer, naturally ask for their name and email so JC can follow up personally. End your message with something like "What\'s the best name and email for JC to reach you?"';
+    }
+
+    try {
+      const response = await fetch(PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 300,
+          system: systemPrompt,
+          messages: conversationHistory
+        })
+      });
+
+      const data = await response.json();
+      const reply = data.content[0].text;
+      conversationHistory.push({ role: 'assistant', content: reply });
+
+      addMsg(reply, false);
+
+      // Show lead capture after 3+ messages if not yet captured
+      if (messageCount >= 3 && !leadCaptured) {
+        setTimeout(showLeadCapture, 400);
+      }
+
+    } catch(err) {
+      const typing = document.getElementById('typing-indicator');
+      if (typing) typing.remove();
+      addMsg("I'm having a moment — try typing your message again, or head to our Get Started form directly.", false);
+      console.error(err);
+    }
+
+    isTyping = false;
+  }
+
+  function handleQuickReply(text) {
+    document.getElementById('chat-options').innerHTML = '';
+    sendMessage(text);
+  }
+
+  function sendChat() {
+    const input = document.getElementById('chat-input');
+    const val = input.value.trim();
+    if (!val || isTyping) return;
+    input.value = '';
+    sendMessage(val);
+  }
+
+  // Bounce animation for typing dots
+  const style = document.createElement('style');
+  style.textContent = '@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }';
+  document.head.appendChild(style);
+
+  // Intersection observer for fade-up
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.fade-up').forEach(el => obs.observe(el));
 </script>
 </body>
 </html>
